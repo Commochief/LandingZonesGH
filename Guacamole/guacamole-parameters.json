@@ -1,0 +1,36 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "vmName": {
+            "value": "GuacamoleVM"
+        },
+        "vmSize": {
+            "value": "Standard_A2_v2"
+        },
+        "adminUsername": {
+            "value": "guacvmadmin"
+        },
+        "sshKeyData": {
+            "value": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQCdgBHfiFiTh/+bn51JT90UIYP3WJiHvTtq0qdh7ygzWsOD5tpbcFLx1TDm1veELQdaR5BaE4zGCJIfA3H3LQ4gOtt6++hjWNdduqFXds4S0Grk4LQ8D+PbOPfota/8ONjIdzuCPgjZ2hZ0bTS/Q99Y8DN+KgzwECWDc81iQ8pwCaWP1Km3Lj+jdX7hbysE7j7QlZKkL6dQfXWhJUjJiIpLHhE7hhyDNAulRoJ4cPP9pdaYj+/6QEq8gb3g0qO5g3zBT7SYUrNSaMH9nRJRDxOOkMmRtTx0eCHkTDY+dqhgUGfs6iK2dc42wTAxx4HKQMuhGx5SfuMfwIMRjvA0a4pvpb2XLk5/KpiWdzUoyXR8O6asbnhU1tqEtAokFAXtrb8sbBC4NB1rF8YbJf/gmSZ+4ajR+SjpKzlAexrwrJmsbmiSXBS9s6Q5xKSw8R+H3vmsHJIIv3iq4WqrJ/NZK3/DCPUYjy2HIxI8XiSGiZk0d51Kt3I8dbtugfB2l/zEp95c8MPSuPnaiIkczSZWhmnFTGQSKtk5jzrX/thNAx2Q9JMQcz6WKbz8X4PcdiQPIh4LSRC93519h/MwI9XUn6GOwBtXLVHUQYUdvkC/JgH09YHQ/bPEMoSQCcEqur/FrQ1C+/+0H5xWjzxb376XbrUUxnRJsTsr32RDIyrXrk6vxw=="
+        },
+        "existingVirtualNetworkName": {
+            "value": "!!REPLACEME!!"
+        },
+        "existingSubnetName": {
+            "value": "!!REPLACEME!!"
+        },
+        "publicIPdomainNameLabel": {
+            "value": "GuacamoleVM"
+        },
+        "publicIPfqdn": {
+            "value": "value"
+        },
+        "cloudConfigFileName": {
+            "value": "value"
+        },
+        "artifactsLocation": {
+            "value": "value"
+        }
+    }
+}

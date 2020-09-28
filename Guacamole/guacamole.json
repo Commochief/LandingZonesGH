@@ -1,0 +1,205 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "vmName": {
+            "defaultValue": "GuacamoleVM",
+            "type": "String",
+            "metadata": {
+                "description": "Name for the Guacamole VM"
+            }
+        },
+        "vmSize": {
+            "defaultValue": "Standard_A2_v2",
+            "type": "String",
+            "metadata": {
+                "description": "Instance size for the Guacamole VM"
+            }
+        },
+        "adminUsername": {
+            "type": "String",
+            "metadata": {
+                "description": "Username to login to the VMs"
+            }
+        },
+        "sshKeyData": {
+            "type": "String",
+            "metadata": {
+                "description": "Public key for SSH authentication"
+            }
+        },
+        "existingVirtualNetworkName": {
+            "type": "String",
+            "metadata": {
+                "description": "Name of the existing VNet"
+            }
+        },
+        "existingSubnetName": {
+            "type": "String",
+            "metadata": {
+                "description": "Name of the subnet in the VNet you want to use"
+            }
+        },
+        "publicIPdomainNameLabel": {
+            "type": "string",
+            "metadata": {
+                "description": "The first part of the guacamole server's FQDN - <domainNameLabel>.<region>.cloudapp.usgovcloudapi.net"
+            }
+        },
+        "publicIPfqdn": {
+            "type": "string",
+            "metadata": {
+                "description": "The second part of the guacamole server's FQDN - <region>.cloudapp.usgovcloudapi.net for MAG or <region>.cloudapp.azure.com "
+            }
+        },
+        "cloudConfigFileName": {
+            "type": "string",
+            "metadata": {
+                "description": "Name of the guacamole cloud config yaml file"
+            }
+        },
+        "artifactsLocation": {
+            "type": "string",
+            "metadata": {
+                "description": "URI for the raw Cloud-Init.txt"
+            }
+        }
+    },
+    "variables": {
+        "subnetRef": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('existingVirtualNetworkName'),  parameters('existingSubnetName'))]",
+        "osImageSku": "Stable",
+        "securityGroupName": "[concat( parameters('vmName'), '-NSG' )]",
+        "nicName": "[concat( parameters('vmName'), '-NIC' )]",
+        "publicIpAddressName": "[concat( parameters('vmName'), '-IP' )]",
+        "sshKeyPath": "[concat('/home/', parameters('adminUsername'),'/.ssh/authorized_keys')]",
+        "customData": "[concat('#include\n', uri(parameters('artifactsLocation'),parameters('cloudConfigFileName')))]"
+    },
+    "resources": [
+        {
+            "type": "Microsoft.Network/publicIPAddresses",
+            "name": "[variables('publicIpAddressName')]",
+            "apiVersion": "2020-05-01",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "publicIPAllocationMethod": "Dynamic",
+                "dnsSettings": {
+                    "domainNameLabel": "[parameters('publicIPdomainNameLabel')]",
+                    "fqdn": "[parameters('publicIPfqdn')]"
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "name": "[variables('securityGroupName')]",
+            "apiVersion": "2020-05-01",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "securityRules": [
+                    {
+                        "name": "SSH",
+                        "properties": {
+                            "description": "Allows SSH traffic",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "sourceAddressPrefix": "*",
+                            "destinationPortRange": "22",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 100,
+                            "direction": "Inbound"
+                        }
+                    },
+                    {
+                        "name": "HTTP",
+                        "properties": {
+                            "description": "Allows HTTP traffic",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "sourceAddressPrefix": "*",
+                            "destinationPortRange": "80",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 200,
+                            "direction": "Inbound"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/networkInterfaces",
+            "name": "[variables('nicName')]",
+            "apiVersion": "2020-05-01",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "ipconfig1",
+                        "properties": {
+                            "privateIPAllocationMethod": "Dynamic",
+                            "publicIPAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses',variables('publicIPAddressName'))]"
+                            },
+                            "subnet": {
+                                "id": "[variables('subnetRef')]"
+                            }
+                        }
+                    }
+                ]
+            },
+            "dependsOn": [
+                "[concat('Microsoft.Network/publicIPAddresses/', variables('publicIPAddressName'))]",
+                "[concat('Microsoft.Network/networkSecurityGroups/', variables('securityGroupName'))]"
+            ]
+        },
+        {
+            "type": "Microsoft.Compute/virtualMachines",
+            "name": "[parameters('vmName')]",
+            "apiVersion": "2019-07-01",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "hardwareProfile": {
+                    "vmSize": "[parameters('vmSize')]"
+                },
+                "osProfile": {
+                    "computerName": "[parameters('vmName')]",
+                    "adminUsername": "[parameters('adminUsername')]",
+                    "customData": "[base64(variables('customData'))]",
+                    "linuxConfiguration": {
+                        "disablePasswordAuthentication": true,
+                        "ssh": {
+                            "publicKeys": [
+                                {
+                                    "path": "[variables('sshKeyPath')]",
+                                    "keyData": "[parameters('sshKeyData')]"
+                                }
+                            ]
+                        }
+                    }
+                },
+                "storageProfile": {
+                    "imageReference": {
+                        "publisher": "CoreOS",
+                        "offer": "CoreOS",
+                        "sku": "[variables('osImageSku')]",
+                        "version": "latest"
+                    },
+                    "osDisk": {
+                        "caching": "ReadWrite",
+                        "createOption": "FromImage"
+                    }
+                },
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces',variables('nicName'))]"
+                        }
+                    ]
+                }
+            },
+            "dependsOn": [
+                "[concat('Microsoft.Network/networkInterfaces/', variables('nicName'))]"
+            ]
+        }
+    ]
+}

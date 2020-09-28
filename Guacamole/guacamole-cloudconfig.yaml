@@ -1,0 +1,237 @@
+--- 
+coreos: 
+  units: 
+    - 
+      command: start
+      name: docker.service
+    - 
+      command: start
+      content: |
+          [Unit]
+          Description=Guacamole running on Docker
+          
+          Requires=docker.service docker-guacd.service docker-mariadb.service docker-mariadb-waiter.service
+          Wants=network-online.target
+          After=docker.service network-online.target docker-guacd.service docker-mariadb.service docker-mariadb-waiter.service
+          
+          [Service]
+          Restart=always
+          RestartSec=3
+          TimeoutStartSec=0
+          
+          ExecStartPre=-/usr/bin/docker rm -f some-guacamole
+          ExecStartPre=-/usr/bin/docker pull guacamole/guacamole:latest
+          
+          ExecStart=/usr/bin/docker run \
+            --name some-guacamole \
+            --link some-guacd:guacd \
+            --link some-mariadb:mysql \
+            -v /opt/guacamolehome:/opt/guacamolehome   \
+            -e GUACAMOLE_HOME=/opt/guacamolehome     \
+            -e MYSQL_DATABASE=guacamole_db  \
+            -e MYSQL_USER=guacamole_user    \
+            -e MYSQL_PASSWORD=[_MYSQLPASSWORD_] \
+            -p 80:8080 \
+            guacamole/guacamole:latest
+          
+          ExecStop=/bin/bash -c " \
+            /usr/bin/docker stop some-guacamole || true \
+            /usr/bin/docker rm some-guacamole || true \
+          "
+          
+          [Install]
+          WantedBy=multi-user.target
+      name: docker-guacamole.service
+    - 
+      command: start
+      content: |
+          [Unit]
+          Description=guacd running on Docker
+          
+          Requires=docker.service
+          Wants=network-online.target
+          After=docker.service network-online.target
+          
+          [Service]
+          Restart=always
+          RestartSec=3
+          TimeoutStartSec=0
+          
+          ExecStartPre=-/usr/bin/docker rm -f some-guacd
+          ExecStartPre=-/usr/bin/docker pull guacamole/guacd:latest
+          
+          ExecStart=/usr/bin/docker run \
+            --name some-guacd \
+            guacamole/guacd:latest
+          
+          ExecStop=/bin/bash -c " \
+            /usr/bin/docker stop some-guacd || true \
+            /usr/bin/docker rm some-guacd || true \
+          "
+          
+          [Install]
+          WantedBy=multi-user.target
+      name: docker-guacd.service
+    - 
+      command: start
+      content: |
+          [Unit]
+          Description=MariaDB running on Docker
+          
+          Requires=docker.service
+          Wants=network-online.target
+          After=docker.service network-online.target
+          
+          [Service]
+          Restart=always
+          RestartSec=3
+          TimeoutStartSec=0
+          
+          ExecStartPre=/usr/bin/chmod +x /opt/bin/docker-mariadb.sh
+          ExecStart=/opt/bin/docker-mariadb.sh
+          
+          ExecStop=/bin/bash -c " \
+            /usr/bin/docker stop some-mariadb || true \
+            /usr/bin/docker rm some-mariadb || true \
+          "
+          
+          [Install]
+          WantedBy=multi-user.target
+      name: docker-mariadb.service
+    - 
+      command: start
+      content: |
+          [Unit]
+          Description=Wait for MariaDB to be initialized
+          
+          Requires=docker.service docker-mariadb.service
+          Wants=network-online.target
+          After=docker.service docker-mariadb.service network-online.target
+          
+          [Service]
+          Type=simple
+          RemainAfterExit=true
+          ExecStartPre=/usr/bin/chmod +x /opt/bin/docker-mariadb-waiter.sh
+          ExecStart=/usr/bin/bash /opt/bin/docker-mariadb-waiter.sh
+          
+          [Install]
+          WantedBy=multi-user.target
+      name: docker-mariadb-waiter.service
+  update: 
+    reboot-strategy: etcd-lock
+write_files: 
+  - 
+    content: |
+        #!/bin/sh
+        
+        # Parameters
+        IMAGE_NAME="mariadb:10.1"
+        CONTAINER_NAME="some-mariadb"
+        GUACAMOLE_IMAGE_NAME="guacamole/guacamole:latest"
+        MYSQL_ROOT_PASSWORD="my-secret-pw1"
+        MYSQL_USER="guacamole_user"
+        MYSQL_DATABASE="guacamole_db"
+        MYSQL_PASSWORD="[_MYSQLPASSWORD_]"
+        
+        # Remove pre-existing containers
+        docker stop $CONTAINER_NAME || true
+        docker rm $CONTAINER_NAME || true
+        
+        # Pull the latest version of the Docker image
+        docker pull $IMAGE_NAME
+        
+        # Check if the MySQL database has been prepared already
+        if [ ! -e /mnt/data/mysql/mysql ]; then
+            # Initial database contents: generate them from the guacamole image
+            TMP_SQL_FILE=/mnt/resource/initdb.sql
+            rm -rf $TMP_SQL_FILE $TMP_SQL_FILE.tmp
+            docker run --rm $GUACAMOLE_IMAGE_NAME /opt/guacamole/bin/initdb.sh --mysql > $TMP_SQL_FILE
+            
+            # Prepend database name to SQL query
+            echo "USE $MYSQL_DATABASE; " | cat - $TMP_SQL_FILE > $TMP_SQL_FILE.tmp \
+                && mv $TMP_SQL_FILE.tmp $TMP_SQL_FILE
+            
+            docker run \
+                --name $CONTAINER_NAME \
+                -e MYSQL_ROOT_PASSWORD=$MYSQL_ROOT_PASSWORD \
+                -e MYSQL_DATABASE=$MYSQL_DATABASE \
+                -e MYSQL_USER=$MYSQL_USER \
+                -e MYSQL_PASSWORD=$MYSQL_PASSWORD \
+                -v /mnt/data/mysql:/var/lib/mysql \
+                -v $TMP_SQL_FILE:/docker-entrypoint-initdb.d/guacamole.sql \
+                $IMAGE_NAME
+        else
+            # Start Docker container
+            docker run \
+                --name $CONTAINER_NAME \
+                -v /mnt/data/mysql:/var/lib/mysql \
+                $IMAGE_NAME
+        fi
+    owner: root
+    path: /opt/bin/docker-mariadb.sh
+    permissions: "0755"
+  - 
+    content: |-
+        #!/bin/sh
+        
+        # This script waits for MariaDB to be ready to accept connections
+        
+        # Parameters
+        IMAGE_NAME="mariadb:10.1"
+        CONTAINER_NAME="some-mariadb"
+        
+        # Wait at least 60 seconds
+        sleep 60
+        
+        # Keep polling database until ready
+        while ! docker run --rm --link $CONTAINER_NAME $IMAGE_NAME mysqladmin ping -h $CONTAINER_NAME --silent; do
+            sleep 5
+        done
+            
+        # Wait 5 more seconds before sending the green light
+        sleep 5
+    owner: root
+    path: /opt/bin/docker-mariadb-waiter.sh
+    permissions: "0755"
+  - 
+    content: |-
+        ### OpenID Config
+        # Required Attributes
+        openid-authorization-endpoint: [_openIDauthendpoint_]
+        # example openid-authorization-endpoint string https://login.microsoftonline.us/abe1234ab-b0b7-4567-a3a8-12345c329355/oauth2/authorize
+        openid-jwks-endpoint: [_openIDjwksendpoint_]
+        # openid-jwks-endpoint: https://login.microsoftonline.us/common/discovery/keys
+        openid-issuer: [_openIDissuer_]
+        # openid-issuer: https://sts.windows.net/abe1234ab-b0b7-4567-a3a8-12345c329355/
+        openid-client-id: [_openIDclientID_]
+        # openid-client-id: 692a64c1-d8f9-43e0-b08e-1234567b404f
+        openid-redirect-uri: [_openIDredirectURI_]
+        # openid-redirect-uri: http://guacamolevm1.govregion.cloudapp.usgovcloudapi.net/guacamole
+        openid-scope: [_openIDscope_]
+        # openid
+        openid-username-claim-type: [_openIDusernameClaimType_]
+        # unique_name
+
+        #MySQL DB Require user in DB Config
+        mysql-user-required: true
+
+    owner: root
+    path: /opt/guacamolehome/guacamole.properties
+    permissions: "0755"
+#  - 
+#   content: |-
+#     #!/bin/sh
+#     ### OpenID Config
+#     # Required Attributes
+#
+#      cd /opt/guacamolehome/extensions
+#      sudo curl -SLO "http://apache.org/dyn/closer.cgi?action=download&filename=guacamole/1.2.0/binary/guacamole-auth-openid-1.2.0.tar.gz"
+#      sudo cp guacamole-auth-openid-1.2.0/guacamole-auth-openid-1.2.0.jar /opt/guacamolehome/extensions
+#      sudo tar -xzf guacamole-auth-openid-1.2.0.tar.gz
+#      sudo cp guacamole-auth-openid-1.2.0/guacamole-auth-openid-1.2.0.jar /opt/guacamolehome/extensions/guacamole-auth-1-openid-1.2.0.jar
+#      sudo rm guacamole-auth-openid-1.2.0 -r
+#      sudo rm guacamole-auth-openid-1.2.0.tar.gz
+#
+#    owner: root
+#    path: /opt/guacamolehome/openauth-extension-install.sh
+#    permissions: "0755"

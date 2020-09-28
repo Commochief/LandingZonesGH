@@ -1,0 +1,36 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "location": {
+            "value": "usgovvirginia"
+        },
+        "virtualMachineName": {
+            "value": "datasciencedemo"
+        },
+        "virtualMachineSize": {
+            "value": "Standard_D4s_v3"
+        },
+        "adminUsername": {
+            "value": "jefe"
+        },
+        "virtualNetworkName": {
+            "value": "buzzsaw-vnet"
+        },
+        "networkInterfaceName": {
+            "value": "datasciencedemo556"
+        },
+        "adminPassword": {
+            "value": null
+        },
+        "diagnosticsStorageAccountName": {
+            "value": "buzzsawdemo"
+        },
+        "diagnosticsStorageAccountId": {
+            "value": "/subscriptions/88b975a8-b40a-44f6-a177-305c7b50971d/resourceGroups/Buzzsaw/providers/Microsoft.Storage/storageAccounts/buzzsawdemo"
+        },
+        "subnetName": {
+            "value": "buzzsaw-subnet"
+        }
+    }
+}
